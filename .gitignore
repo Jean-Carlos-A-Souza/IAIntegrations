@@ -1,0 +1,10 @@
+/vendor
+/node_modules
+/.env
+/storage/*.key
+/storage/app/*
+/storage/framework/*
+/storage/logs/*
+!storage/app/.gitignore
+!storage/framework/.gitignore
+!storage/logs/.gitignore
