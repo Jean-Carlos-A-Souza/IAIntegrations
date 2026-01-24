@@ -23,6 +23,12 @@ class TenantResolver
     {
         $schema = $tenant->schema;
 
+        if (!$this->schemaExists($schema)) {
+            DB::statement('SET search_path TO public');
+
+            return;
+        }
+
         DB::statement('SET search_path TO '.$schema.', public');
     }
 
@@ -61,5 +67,15 @@ class TenantResolver
         }
 
         return Tenant::query()->find($user->tenant_id);
+    }
+
+    private function schemaExists(string $schema): bool
+    {
+        $result = DB::selectOne(
+            'select exists (select 1 from information_schema.schemata where schema_name = ?) as exists',
+            [$schema]
+        );
+
+        return (bool) ($result->exists ?? false);
     }
 }
