@@ -9,23 +9,26 @@ Base de backend Laravel para a plataforma IAFuture (IAF). Este projeto foi estru
 - Redis 7
 
 ## Setup rápido
-1. Copie o `.env.example` para `.env` e ajuste as variáveis necessárias.
-2. Suba os containers:
+1. Suba os containers:
    ```bash
    docker-compose up -d --build
    ```
-3. Instale dependências (no container):
+2. Instale dependências (no container):
    ```bash
-   docker exec -it iafuture_app composer install
+   docker-compose run --rm app composer install
+   ```
+3. Gere a chave da aplicação:
+   ```bash
+   docker-compose run --rm app php artisan key:generate
    ```
 4. Rode migrações do schema **public**:
    ```bash
-   docker exec -it iafuture_app php artisan migrate --path=database/migrations/public
+   docker-compose run --rm app php artisan migrate
    ```
 5. Crie o schema do tenant (exemplo `tenant_123`) e rode as migrações:
    ```bash
    docker exec -it iafuture_postgres psql -U iafuture -d iafuture -c "CREATE SCHEMA IF NOT EXISTS tenant_123;"
-   docker exec -it iafuture_app php artisan migrate --path=database/migrations/tenant
+   docker-compose run --rm app php artisan migrate --path=database/migrations/tenant
    ```
 
 > **Importante:** o middleware `ResolveTenant` ajusta o `search_path` para o schema do tenant e mantém o `public` na pilha.

@@ -8,8 +8,21 @@ services:
     container_name: iafuture_app
     volumes:
       - ./:/var/www/html
-    env_file:
-      - .env
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: iafuture
+      DB_USERNAME: iafuture
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      FILESYSTEM_DISK: local
     ports:
       - "8000:8000"
     depends_on:
@@ -24,8 +37,21 @@ services:
     container_name: iafuture_queue
     volumes:
       - ./:/var/www/html
-    env_file:
-      - .env
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: iafuture
+      DB_USERNAME: iafuture
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      FILESYSTEM_DISK: local
     depends_on:
       - redis
       - postgres
@@ -38,8 +64,21 @@ services:
     container_name: iafuture_scheduler
     volumes:
       - ./:/var/www/html
-    env_file:
-      - .env
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: iafuture
+      DB_USERNAME: iafuture
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      FILESYSTEM_DISK: local
     depends_on:
       - redis
       - postgres

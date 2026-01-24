@@ -5,6 +5,7 @@
 /storage/app/*
 /storage/framework/*
 /storage/logs/*
+/bootstrap/cache/*.php
 !storage/app/.gitignore
 !storage/framework/.gitignore
 !storage/logs/.gitignore
