@@ -1,5 +1,4 @@
 services:
-  # WEB (Laravel HTTP)
   - type: web
     name: iafuture-api
     runtime: docker
@@ -8,6 +7,8 @@ services:
     dockerfilePath: docker/app/Dockerfile
     dockerContext: .
     envVars:
+      - key: SERVICE_ROLE
+        value: web
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
@@ -55,12 +56,8 @@ services:
         value: redis
 
       - key: APP_KEY
-        sync: false  # setar no painel
+        sync: false
 
-    # Se seu container NÃO inicia o servidor sozinho, descomente e use:
-    # startCommand: sh -lc "php artisan migrate --force && php -S 0.0.0.0:$PORT -t public"
-
-  # WORKER (queue)
   - type: worker
     name: iafuture-queue
     runtime: docker
@@ -68,18 +65,85 @@ services:
     autoDeploy: true
     dockerfilePath: docker/app/Dockerfile
     dockerContext: .
-    startCommand: sh -lc "php artisan queue:work --tries=3 --timeout=120"
+    envVars:
+      - key: SERVICE_ROLE
+        value: queue
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: iafuture-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: iafuture-db
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: iafuture-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: iafuture-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: iafuture-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          name: iafuture-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: iafuture-redis
+          type: redis
+          property: port
+      - key: QUEUE_CONNECTION
+        value: redis
 
-  # CRON (scheduler)
-  - type: cron
+  - type: worker
     name: iafuture-scheduler
     runtime: docker
-    schedule: "*/1 * * * *"
+    plan: free
+    autoDeploy: true
     dockerfilePath: docker/app/Dockerfile
     dockerContext: .
-    startCommand: sh -lc "php artisan schedule:run"
+    envVars:
+      - key: SERVICE_ROLE
+        value: scheduler
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: iafuture-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: iafuture-db
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: iafuture-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: iafuture-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: iafuture-db
+          property: password
 
-  # REDIS (managed)
   - type: redis
     name: iafuture-redis
     plan: free
@@ -87,3 +151,6 @@ services:
 databases:
   - name: iafuture-db
     plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: "temporary"
