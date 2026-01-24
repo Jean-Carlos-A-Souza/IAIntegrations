@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant.ensure' => EnsureTenantIsolation::class,
         ]);
     })
+    ->withProviders([
+    Dedoc\Scramble\ScrambleServiceProvider::class,
+    ])
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })
