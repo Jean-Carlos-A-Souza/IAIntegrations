@@ -14,6 +14,7 @@ services:
         value: "false"
       - key: APP_URL
         value: https://iafuture-api.onrender.com
+
       - key: DB_CONNECTION
         value: pgsql
       - key: DB_HOST
@@ -36,6 +37,7 @@ services:
         fromDatabase:
           name: iafuture-db
           property: password
+
       - key: REDIS_HOST
         fromService:
           name: iafuture-redis
@@ -46,15 +48,16 @@ services:
           name: iafuture-redis
           type: redis
           property: port
+
       - key: QUEUE_CONNECTION
         value: redis
       - key: CACHE_DRIVER
         value: redis
-      - key: APP_KEY
-        sync: false   # você vai setar no painel (secret)
 
-    # Se seu Dockerfile/entrypoint já inicia o servidor, ok.
-    # Se NÃO inicia, defina um startCommand (depende do teu container):
+      - key: APP_KEY
+        sync: false  # setar no painel
+
+    # Se seu container NÃO inicia o servidor sozinho, descomente e use:
     # startCommand: sh -lc "php artisan migrate --force && php -S 0.0.0.0:$PORT -t public"
 
   # WORKER (queue)
@@ -76,13 +79,11 @@ services:
     dockerContext: .
     startCommand: sh -lc "php artisan schedule:run"
 
-databases:
-  - name: iafuture-db
-    plan: free
-
-# Redis “managed” no Render
-# (Render tem Redis como serviço gerenciado; em blueprint ele entra como service do tipo redis)
-services:
+  # REDIS (managed)
   - type: redis
     name: iafuture-redis
+    plan: free
+
+databases:
+  - name: iafuture-db
     plan: free
