@@ -1,11 +1,12 @@
-#!/usr/bin/env sh
+#!/bin/sh
 set -e
 
 if [ ! -f "/var/www/html/.env" ] && [ -f "/var/www/html/.env.example" ]; then
   cp /var/www/html/.env.example /var/www/html/.env
 fi
 
-mkdir -p /var/www/html/storage/app \
+mkdir -p \
+  /var/www/html/storage/app \
   /var/www/html/storage/app/public \
   /var/www/html/storage/framework/cache \
   /var/www/html/storage/framework/sessions \
