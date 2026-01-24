@@ -1,4 +1,5 @@
 services:
+  # WEB (Laravel HTTP)
   - type: web
     name: iafuture-api
     runtime: docker
@@ -6,9 +7,9 @@ services:
     autoDeploy: true
     dockerfilePath: docker/app/Dockerfile
     dockerContext: .
+    # Em runtime docker, use dockerCommand (não startCommand)
+    dockerCommand: sh -lc "php artisan migrate --force && php artisan serve --host 0.0.0.0 --port ${PORT}"
     envVars:
-      - key: SERVICE_ROLE
-        value: web
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
@@ -42,12 +43,12 @@ services:
       - key: REDIS_HOST
         fromService:
           name: iafuture-redis
-          type: redis
+          type: keyvalue
           property: host
       - key: REDIS_PORT
         fromService:
           name: iafuture-redis
-          type: redis
+          type: keyvalue
           property: port
 
       - key: QUEUE_CONNECTION
@@ -55,9 +56,11 @@ services:
       - key: CACHE_DRIVER
         value: redis
 
+      # Você vai setar no dashboard como Secret
       - key: APP_KEY
         sync: false
 
+  # WORKER (queue)
   - type: worker
     name: iafuture-queue
     runtime: docker
@@ -65,9 +68,8 @@ services:
     autoDeploy: true
     dockerfilePath: docker/app/Dockerfile
     dockerContext: .
+    dockerCommand: sh -lc "php artisan queue:work --tries=3 --timeout=120"
     envVars:
-      - key: SERVICE_ROLE
-        value: queue
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
@@ -97,26 +99,29 @@ services:
       - key: REDIS_HOST
         fromService:
           name: iafuture-redis
-          type: redis
+          type: keyvalue
           property: host
       - key: REDIS_PORT
         fromService:
           name: iafuture-redis
-          type: redis
+          type: keyvalue
           property: port
       - key: QUEUE_CONNECTION
         value: redis
+      - key: CACHE_DRIVER
+        value: redis
+      - key: APP_KEY
+        sync: false
 
-  - type: worker
+  # CRON (scheduler) - no Render é um "cron job" mesmo
+  - type: cron
     name: iafuture-scheduler
     runtime: docker
-    plan: free
-    autoDeploy: true
+    schedule: "*/1 * * * *"
     dockerfilePath: docker/app/Dockerfile
     dockerContext: .
+    dockerCommand: sh -lc "php artisan schedule:run"
     envVars:
-      - key: SERVICE_ROLE
-        value: scheduler
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
@@ -143,14 +148,30 @@ services:
         fromDatabase:
           name: iafuture-db
           property: password
+      - key: REDIS_HOST
+        fromService:
+          name: iafuture-redis
+          type: keyvalue
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: iafuture-redis
+          type: keyvalue
+          property: port
+      - key: APP_KEY
+        sync: false
 
-  - type: redis
+  # Redis gerenciado do Render (Key Value)
+  - type: keyvalue
     name: iafuture-redis
     plan: free
+    # ipAllowList é obrigatório para keyvalue no blueprint
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
 
 databases:
   - name: iafuture-db
     plan: free
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: "temporary"
+    # opcional: tornar “apenas rede privada” (sem acesso público)
+    # ipAllowList: []
