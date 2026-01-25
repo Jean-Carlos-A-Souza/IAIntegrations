@@ -8,12 +8,15 @@ use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\UsageController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\HealthController;
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('me', [AuthController::class, 'me'])->middleware('auth:sanctum');
 });
+
+Route::get('/health/openai', [HealthController::class, 'openai']);
 
 Route::middleware(['auth:sanctum', 'tenant.resolve', 'tenant.ensure'])->group(function () {
     Route::get('tenant', [TenantController::class, 'show']);
