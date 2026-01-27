@@ -5,15 +5,19 @@ use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\KnowledgeController;
+use App\Http\Controllers\PasswordRecoveryController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\UsageController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HealthController;
 
 Route::prefix('auth')->group(function () {
+    Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
     Route::post('login', [AuthController::class, 'login']);
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('me', [AuthController::class, 'me'])->middleware('auth:sanctum');
+    Route::post('password/forgot', [PasswordRecoveryController::class, 'forgot'])->middleware('throttle:3,10');
+    Route::post('password/reset', [PasswordRecoveryController::class, 'reset']);
 });
 
 Route::get('/health/openai', [HealthController::class, 'openai']);
