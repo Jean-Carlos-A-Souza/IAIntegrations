@@ -13,7 +13,7 @@ use App\Http\Controllers\HealthController;
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
-    Route::post('login', [AuthController::class, 'login']);
+    Route::post('login', [AuthController::class, 'login'])->middleware('tenant.resolve');
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     Route::post('password/forgot', [PasswordRecoveryController::class, 'forgot'])->middleware('throttle:3,10');

@@ -6,9 +6,11 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -75,9 +77,28 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request)
     {
-        $user = User::query()->where('email', $request->input('email'))->first();
+        $startedAt = microtime(true);
+        $email = strtolower(trim((string) $request->input('email')));
+        $tenant = TenantContext::getTenant();
 
-        if (!$user || !Hash::check($request->input('password'), $user->password)) {
+        Log::info('Login attempt', [
+            'email' => $email,
+            'tenant_id' => $tenant?->id,
+            'tenant_resolved' => $tenant !== null,
+        ]);
+
+        $user = User::query()->where('email', $email)->first();
+        $hashCheck = $user ? Hash::check((string) $request->input('password'), $user->password) : false;
+
+        Log::info('Login result', [
+            'email' => $email,
+            'found_user' => $user !== null,
+            'hash_check' => $hashCheck,
+            'tenant_id' => $tenant?->id,
+            'elapsed_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+        ]);
+
+        if (!$user || !$hashCheck) {
             return response()->json(['message' => 'Invalid credentials.'], 401);
         }
 
@@ -85,7 +106,13 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user' => $user,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'tenant_id' => $user->tenant_id,
+                'role' => $user->role,
+            ],
         ]);
     }
 
