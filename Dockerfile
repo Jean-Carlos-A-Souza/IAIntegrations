@@ -13,14 +13,13 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint
-RUN chmod +x /usr/local/bin/entrypoint \
-    && sed -i 's/\r$//' /usr/local/bin/entrypoint
-
 # Copia o projeto inteiro para dentro da imagem (importante no Render)
 COPY . /var/www/html
 
-ENTRYPOINT ["sh", "/usr/local/bin/entrypoint"]
+RUN chmod +x /var/www/html/docker/app/entrypoint.sh \
+    && sed -i 's/\r$//' /var/www/html/docker/app/entrypoint.sh
+
+ENTRYPOINT ["sh", "/var/www/html/docker/app/entrypoint.sh"]
 
 EXPOSE 8000
 
