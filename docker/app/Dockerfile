@@ -12,9 +12,6 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint
-RUN chmod +x /usr/local/bin/entrypoint
-
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
+ENTRYPOINT ["sh", "/var/www/html/docker/app/entrypoint.sh"]
 
 EXPOSE 8000
