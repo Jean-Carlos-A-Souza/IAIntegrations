@@ -27,7 +27,9 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        DB::statement('ALTER TABLE document_chunks ADD COLUMN embedding vector(3072)');
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE document_chunks ADD COLUMN embedding vector(3072)');
+        }
 
         Schema::create('chats', function (Blueprint $table) {
             $table->id();

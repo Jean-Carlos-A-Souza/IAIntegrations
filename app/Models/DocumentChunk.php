@@ -11,7 +11,10 @@ class DocumentChunk extends TenantModel
 
     protected $fillable = [
         'document_id',
+        'chunk_index',
         'content',
+        'tokens_estimated',
+        'content_hash',
         'embedding',
         'tokens',
     ];

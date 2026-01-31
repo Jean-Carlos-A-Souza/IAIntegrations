@@ -21,6 +21,10 @@ class TenantResolver
 
     public function applyTenantSchema(Tenant $tenant): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         $schema = $tenant->schema;
 
         if (!$this->schemaExists($schema)) {
