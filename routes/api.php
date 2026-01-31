@@ -13,16 +13,16 @@ use App\Http\Controllers\HealthController;
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
-    Route::post('login', [AuthController::class, 'login'])->middleware('tenant.resolve');
-    Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-    Route::get('me', [AuthController::class, 'me'])->middleware('auth:sanctum');
+    Route::post('login', [AuthController::class, 'login'])->middleware(['tenant.resolve', 'throttle:5,1']);
+    Route::post('logout', [AuthController::class, 'logout'])->middleware(['tenant.resolve', 'auth:sanctum']);
+    Route::get('me', [AuthController::class, 'me'])->middleware(['tenant.resolve', 'auth:sanctum']);
     Route::post('password/forgot', [PasswordRecoveryController::class, 'forgot'])->middleware('throttle:3,10');
     Route::post('password/reset', [PasswordRecoveryController::class, 'reset']);
 });
 
 Route::get('/health/openai', [HealthController::class, 'openai']);
 
-Route::middleware(['auth:sanctum', 'tenant.resolve', 'tenant.ensure'])->group(function () {
+Route::middleware(['tenant.resolve', 'auth:sanctum', 'tenant.ensure'])->group(function () {
     Route::get('tenant', [TenantController::class, 'show']);
     Route::get('tenant/users', [TenantController::class, 'indexUsers']);
     Route::post('tenant/users', [TenantController::class, 'storeUser']);
