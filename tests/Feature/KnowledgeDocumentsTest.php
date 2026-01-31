@@ -135,6 +135,78 @@ class KnowledgeDocumentsTest extends TestCase
         $response->assertStatus(403);
     }
 
+    public function test_update_document_successfully(): void
+    {
+        $tenant = $this->createTenant();
+        $user = $this->createUser($tenant->id);
+
+        TenantContext::setTenant($tenant);
+
+        $document = Document::query()->create([
+            'owner_user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'title' => 'Original Title',
+            'original_name' => 'doc.txt',
+            'path' => 'knowledge/test/doc.txt',
+            'mime_type' => 'text/plain',
+            'size_bytes' => 10,
+            'status' => 'processed',
+            'tokens' => 0,
+            'tags' => ['old'],
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson('/api/knowledge/documents/'.$document->id, [
+                'title' => 'New Title',
+                'tags' => ['new', 'updated'],
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('title', 'New Title')
+            ->assertJsonPath('tags', ['new', 'updated']);
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'title' => 'New Title',
+        ]);
+    }
+
+    public function test_update_other_user_document_is_forbidden(): void
+    {
+        $tenant = $this->createTenant();
+        $userA = $this->createUser($tenant->id, 'a3@example.com');
+        $userB = $this->createUser($tenant->id, 'b3@example.com');
+
+        TenantContext::setTenant($tenant);
+
+        $document = Document::query()->create([
+            'owner_user_id' => $userB->id,
+            'tenant_id' => $tenant->id,
+            'title' => 'Doc B',
+            'original_name' => 'b.txt',
+            'path' => 'knowledge/test/b.txt',
+            'mime_type' => 'text/plain',
+            'size_bytes' => 10,
+            'status' => 'processed',
+            'tokens' => 0,
+        ]);
+
+        Sanctum::actingAs($userA);
+
+        $response = $this->withHeader('X-Tenant-ID', $tenant->id)
+            ->patchJson('/api/knowledge/documents/'.$document->id, [
+                'title' => 'Hacked Title',
+            ]);
+
+        $response->assertStatus(403);
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'title' => 'Doc B', // Não mudou
+        ]);
+    }
+
     private function createTenant(): Tenant
     {
         return Tenant::query()->create([

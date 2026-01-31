@@ -30,6 +30,8 @@ Route::middleware(['auth:sanctum', 'tenant.resolve', 'tenant.ensure'])->group(fu
     Route::post('knowledge/documents', [KnowledgeController::class, 'store']);
     Route::get('knowledge/documents', [KnowledgeController::class, 'index']);
     Route::get('knowledge/documents/{document}', [KnowledgeController::class, 'show']);
+    Route::patch('knowledge/documents/{document}', [KnowledgeController::class, 'update']);
+    Route::put('knowledge/documents/{document}', [KnowledgeController::class, 'update']);
     Route::delete('knowledge/documents/{document}', [KnowledgeController::class, 'destroy']);
 
     Route::post('chat/ask', [ChatController::class, 'ask']);

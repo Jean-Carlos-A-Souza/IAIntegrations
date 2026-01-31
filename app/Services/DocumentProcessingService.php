@@ -19,7 +19,12 @@ class DocumentProcessingService
         $this->validateUploadedFile($file);
 
         $directory = $this->buildDocumentDirectory($document->id, $userId, $tenantId);
-        $path = $directory.'/original.txt';
+        
+        // Preservar extensão original
+        $extension = strtolower($file->getClientOriginalExtension());
+        $filename = "original.{$extension}";
+        
+        $path = $directory . '/' . $filename;
 
         Storage::disk($this->disk())->put($path, file_get_contents($file->getRealPath()));
 

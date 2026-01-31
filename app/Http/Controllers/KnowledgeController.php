@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Services\DocumentProcessingService;
 use App\Services\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class KnowledgeController extends Controller
@@ -89,9 +90,31 @@ class KnowledgeController extends Controller
             'mime_type' => $document->mime_type,
             'size_bytes' => $document->size_bytes,
             'status' => $document->status,
+            'error_message' => $document->status === 'failed' ? $document->error_message : null,
             'created_at' => $document->created_at,
             'preview' => $preview,
             'chunks_count' => $document->chunks()->count(),
+            'tokens' => $document->tokens,
+        ]);
+    }
+
+    public function update(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+
+        $validated = $request->validate([
+            'title' => 'sometimes|string|max:255',
+            'tags' => 'sometimes|array',
+            'tags.*' => 'string|max:50',
+        ]);
+
+        $document->update($validated);
+
+        return response()->json([
+            'id' => $document->id,
+            'title' => $document->title,
+            'tags' => $document->tags,
+            'updated_at' => $document->updated_at,
         ]);
     }
 
@@ -99,10 +122,12 @@ class KnowledgeController extends Controller
     {
         $this->authorize('delete', $document);
 
-        if ($document->path) {
-            Storage::disk(config('knowledge.disk'))->deleteDirectory(dirname($document->path));
-        }
-        $document->delete();
+        DB::transaction(function () use ($document) {
+            if ($document->path) {
+                Storage::disk(config('knowledge.disk'))->deleteDirectory(dirname($document->path));
+            }
+            $document->delete();
+        });
 
         return response()->json(['message' => 'Deleted.']);
     }

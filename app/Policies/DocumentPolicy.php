@@ -17,6 +17,11 @@ class DocumentPolicy
         return $this->ownsDocument($user, $document);
     }
 
+    public function update(User $user, Document $document): bool
+    {
+        return $this->ownsDocument($user, $document);
+    }
+
     private function ownsDocument(User $user, Document $document): bool
     {
         if ((int) $document->owner_user_id !== (int) $user->id) {
