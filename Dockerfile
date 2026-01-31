@@ -16,10 +16,12 @@ WORKDIR /var/www/html
 # Copia o projeto inteiro para dentro da imagem (importante no Render)
 COPY . /var/www/html
 
-RUN chmod +x /var/www/html/docker/app/entrypoint.sh \
-    && sed -i 's/\r$//' /var/www/html/docker/app/entrypoint.sh
+# Copia o entrypoint para um local padrão e garante LF + permissão
+COPY docker/app/entrypoint_clean.sh /usr/local/bin/entrypoint
+RUN chmod +x /usr/local/bin/entrypoint \
+    && sed -i 's/\r$//' /usr/local/bin/entrypoint
 
-ENTRYPOINT ["sh", "/var/www/html/docker/app/entrypoint.sh"]
+ENTRYPOINT ["sh", "/usr/local/bin/entrypoint"]
 
 EXPOSE 8000
 
