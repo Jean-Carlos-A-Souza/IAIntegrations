@@ -7,12 +7,15 @@ use App\Jobs\ProcessDocumentJob;
 use App\Models\Document;
 use App\Services\DocumentProcessingService;
 use App\Services\TenantContext;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class KnowledgeController extends Controller
 {
+    use AuthorizesRequests;
+
     public function index(Request $request)
     {
         $user = $request->user();
