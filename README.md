@@ -53,6 +53,44 @@ Base de backend Laravel para a plataforma IAFuture (IAF). Este projeto foi estru
 - Usage: `/api/usage/monthly`, `/api/analytics/top-questions`
 - API Keys: `/api/api-keys`, `/api/api-keys/{id}/rotate`
 
+## Knowledge Base (documentos)
+### Rotas
+- `POST /api/knowledge/documents` (multipart/form-data)
+- `GET /api/knowledge/documents`
+- `GET /api/knowledge/documents/{id}`
+- `DELETE /api/knowledge/documents/{id}`
+
+### Exemplo de upload
+```bash
+curl -X POST "http://localhost:8000/api/knowledge/documents" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "X-Tenant-ID: <TENANT_ID>" \
+  -F "file=@/path/to/notes.txt" \
+  -F "title=Notas" \
+  -F "tags[]=manual"
+```
+
+### Exemplo de listagem
+```bash
+curl -X GET "http://localhost:8000/api/knowledge/documents" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "X-Tenant-ID: <TENANT_ID>"
+```
+
+### Exemplo de detalhe
+```bash
+curl -X GET "http://localhost:8000/api/knowledge/documents/{id}" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "X-Tenant-ID: <TENANT_ID>"
+```
+
+### Exemplo de remoção
+```bash
+curl -X DELETE "http://localhost:8000/api/knowledge/documents/{id}" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "X-Tenant-ID: <TENANT_ID>"
+```
+
 ## Observações de segurança
 - Nenhuma query deve rodar sem `TenantContext` ativo.
 - Armazenamento de documentos isolado por schema e bucket.

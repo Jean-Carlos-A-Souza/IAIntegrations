@@ -3,13 +3,12 @@
 namespace App\Jobs;
 
 use App\Models\Document;
-use App\Services\RAGService;
+use App\Services\DocumentProcessingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Storage;
 
 class ProcessDocumentJob implements ShouldQueue
 {
@@ -19,23 +18,9 @@ class ProcessDocumentJob implements ShouldQueue
     {
     }
 
-    public function handle(RAGService $rag): void
+    public function handle(DocumentProcessingService $processing): void
     {
         $document = Document::query()->findOrFail($this->documentId);
-
-        $content = $this->extractText($document->path);
-        $chunks = $rag->chunkText($content);
-
-        $document->update(['status' => 'chunked', 'tokens' => count($chunks)]);
-
-        foreach ($chunks as $chunk) {
-            GenerateEmbeddingsJob::dispatch($document->id, $chunk);
-        }
-    }
-
-    private function extractText(string $path): string
-    {
-        // Placeholder extraction. Replace with PDF/DOCX/TXT parsers.
-        return (string) Storage::get($path);
+        $processing->processDocument($document);
     }
 }

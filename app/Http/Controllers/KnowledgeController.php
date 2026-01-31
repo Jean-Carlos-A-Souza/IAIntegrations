@@ -5,36 +5,103 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Jobs\ProcessDocumentJob;
 use App\Models\Document;
+use App\Services\DocumentProcessingService;
+use App\Services\TenantContext;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class KnowledgeController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Document::query()->latest()->get());
+        $user = $request->user();
+
+        $documents = Document::query()
+            ->where('owner_user_id', $user->id)
+            ->when($user->tenant_id, fn ($query) => $query->where('tenant_id', $user->tenant_id))
+            ->latest()
+            ->paginate(15)
+            ->through(function (Document $document) {
+                return [
+                    'id' => $document->id,
+                    'title' => $document->title,
+                    'original_name' => $document->original_name,
+                    'size_bytes' => $document->size_bytes,
+                    'status' => $document->status,
+                    'created_at' => $document->created_at,
+                ];
+            });
+
+        return response()->json($documents);
     }
 
-    public function store(StoreDocumentRequest $request)
+    public function store(StoreDocumentRequest $request, DocumentProcessingService $processing)
     {
+        $user = $request->user();
         $file = $request->file('file');
-        $path = $file->store('documents');
+        $title = $request->input('title') ?? pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $tenantId = TenantContext::getTenant()?->id;
 
         $document = Document::query()->create([
-            'title' => $request->input('title') ?? $file->getClientOriginalName(),
-            'path' => $path,
+            'owner_user_id' => $user->id,
+            'tenant_id' => $tenantId,
+            'title' => $title,
+            'original_name' => $file->getClientOriginalName(),
+            'path' => '',
             'mime_type' => $file->getClientMimeType(),
-            'status' => 'queued',
+            'size_bytes' => $file->getSize(),
+            'status' => 'uploaded',
             'tokens' => 0,
+            'tags' => $request->input('tags'),
         ]);
 
-        ProcessDocumentJob::dispatch($document->id);
+        $path = $processing->storeUploadedFile($document, $file, $user->id, $tenantId);
+        $document->update(['path' => $path]);
 
-        return response()->json($document, 201);
+        if (config('knowledge.process_async')) {
+            $document->update(['status' => 'processing']);
+            ProcessDocumentJob::dispatch($document->id);
+        } else {
+            $processing->processDocument($document);
+        }
+
+        return response()->json([
+            'document_id' => $document->id,
+            'status' => $document->status,
+            'title' => $document->title,
+            'original_name' => $document->original_name,
+        ], 201);
+    }
+
+    public function show(Document $document)
+    {
+        $this->authorize('view', $document);
+
+        $previewLength = config('knowledge.preview_length', 1500);
+        $preview = $document->content_text
+            ? mb_substr($document->content_text, 0, $previewLength)
+            : null;
+
+        return response()->json([
+            'id' => $document->id,
+            'title' => $document->title,
+            'original_name' => $document->original_name,
+            'mime_type' => $document->mime_type,
+            'size_bytes' => $document->size_bytes,
+            'status' => $document->status,
+            'created_at' => $document->created_at,
+            'preview' => $preview,
+            'chunks_count' => $document->chunks()->count(),
+        ]);
     }
 
     public function destroy(Document $document)
     {
-        Storage::delete($document->path);
+        $this->authorize('delete', $document);
+
+        if ($document->path) {
+            Storage::disk(config('knowledge.disk'))->deleteDirectory(dirname($document->path));
+        }
         $document->delete();
 
         return response()->json(['message' => 'Deleted.']);
