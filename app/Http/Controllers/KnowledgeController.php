@@ -7,6 +7,7 @@ use App\Jobs\ProcessDocumentJob;
 use App\Models\Document;
 use App\Services\DocumentProcessingService;
 use App\Services\TenantContext;
+use App\Services\TokenTracker;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -69,11 +70,26 @@ class KnowledgeController extends Controller
             $processing->processDocument($document);
         }
 
+        // Rastrear tokens consumidos no upload
+        $estimatedTokens = ceil($file->getSize() / 4); // Aproximadamente
+        TokenTracker::trackTokens(
+            $tenantId,
+            $estimatedTokens,
+            'document.upload',
+            [
+                'document_id' => $document->id,
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize(),
+            ]
+        );
+
         return response()->json([
             'document_id' => $document->id,
             'status' => $document->status,
             'title' => $document->title,
             'original_name' => $document->original_name,
+            'tokens_used' => $estimatedTokens,
+            'tokens_remaining' => $request->get('tokens_remaining', 0),
         ], 201);
     }
 

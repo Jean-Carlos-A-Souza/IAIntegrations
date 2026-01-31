@@ -8,6 +8,9 @@ use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\PasswordRecoveryController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\UsageController;
+use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HealthController;
 
@@ -22,7 +25,30 @@ Route::prefix('auth')->group(function () {
 
 Route::get('/health/openai', [HealthController::class, 'openai']);
 
+// TIER 1: Webhooks (sem autenticação - Mercado Pago chama isso)
+Route::post('/webhooks/mercadopago', [WebhookController::class, 'mercadopago'])->withoutMiddleware(['auth', 'throttle']);
+
+// Rotas de configuração (sem autenticação necessária)
+Route::get('config/payment', [PaymentController::class, 'getConfig']);
+
+// Rotas de planos (sem autenticação necessária ou apenas leitura)
+Route::get('plans', [SubscriptionController::class, 'listPlans']);
+
 Route::middleware(['tenant.resolve', 'auth:sanctum', 'tenant.ensure'])->group(function () {
+    // Rotas de subscription (antes de verificar subscription ativa)
+    Route::get('subscription', [SubscriptionController::class, 'getCurrent']);
+    Route::post('subscription/subscribe', [SubscriptionController::class, 'subscribe']);
+    Route::post('subscription/cancel', [SubscriptionController::class, 'cancel']);
+    Route::post('subscription/renew', [SubscriptionController::class, 'renew']);
+
+    // NOVO: Rotas de pagamento (Mercado Pago)
+    Route::post('payments/create', [PaymentController::class, 'createPayment']);
+    Route::get('payments/{payment_id}/status', [PaymentController::class, 'getPaymentStatus']);
+    Route::get('payments/{payment_id}/debug', [PaymentController::class, 'debugWebhook']); // Remove em produção!
+});
+
+// Rotas protegidas com validações de subscription e limit
+Route::middleware(['tenant.resolve', 'auth:sanctum', 'tenant.ensure', 'verify.active.subscription', 'validate.token.limit', 'enforce.request.rate.limit'])->group(function () {
     Route::get('tenant', [TenantController::class, 'show']);
     Route::get('tenant/users', [TenantController::class, 'indexUsers']);
     Route::post('tenant/users', [TenantController::class, 'storeUser']);
