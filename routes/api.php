@@ -12,7 +12,8 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\HealthController;
+use App\\Http\\Controllers\\HealthController;
+use App\\Http\\Controllers\\LogController;
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
@@ -45,6 +46,7 @@ Route::middleware(['tenant.resolve', 'auth:sanctum', 'tenant.ensure'])->group(fu
     Route::post('payments/create', [PaymentController::class, 'createPayment']);
     Route::get('payments/{payment_id}/status', [PaymentController::class, 'getPaymentStatus']);
     Route::get('payments/{payment_id}/debug', [PaymentController::class, 'debugWebhook']); // Remove em produção!
+    Route::get('logs/{date?}', [LogController::class, 'show']);
 });
 
 // Rotas protegidas com validações de subscription e limit

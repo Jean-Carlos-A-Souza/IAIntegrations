@@ -69,22 +69,24 @@ class MercadoPagoService
             $payer['email'] = $payer['email'] ?? $email;
             $payer['first_name'] = $payer['first_name'] ?? ($options['payer_first_name'] ?? 'Cliente');
 
-            // Determinar tipo de pagamento e method_id
-            $paymentMethodId = match ($paymentMethod) {
-                'pix' => 'pix',
-                'credit_card' => $options['card_brand'] ?? 'visa',
-                'debit_card' => $options['card_brand'] ?? 'debelo',
-                default => 'visa',
-            };
+            // Determinar tipo de pagamento e method_id (cartão só se brand informado)
+            $paymentMethodId = null;
+            if ($paymentMethod === 'pix') {
+                $paymentMethodId = 'pix';
+            } elseif (in_array($paymentMethod, ['credit_card', 'debit_card'], true)) {
+                $paymentMethodId = $options['card_brand'] ?? null;
+            }
 
             $payload = [
                 'transaction_amount' => (float) $amount,
                 'description' => $options['description'] ?? 'Subscription payment',
                 'external_reference' => $tenantId,
-                'payment_method_id' => $paymentMethodId,
                 'payer' => $this->filterNulls($payer),
                 'installments' => $options['installments'] ?? 1,
             ];
+            if ($paymentMethodId) {
+                $payload['payment_method_id'] = $paymentMethodId;
+            }
 
             if (!empty($options['additional_info']) && is_array($options['additional_info'])) {
                 $payload['additional_info'] = $options['additional_info'];
