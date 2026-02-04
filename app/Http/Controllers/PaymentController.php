@@ -30,6 +30,8 @@ class PaymentController extends Controller
      */
     public function createPayment(Request $request)
     {
+        $traceId = (string) \Illuminate\Support\Str::uuid();
+
         $validated = $request->validate([
             'plan_id' => 'required|exists:plans,id',
             'payment_method' => 'required|in:pix,credit_card,debit_card',
@@ -37,16 +39,47 @@ class PaymentController extends Controller
             'card_brand' => 'nullable|in:visa,mastercard,elo,amex,debelo',
             'installments' => 'nullable|integer|min:1|max:12',
             'idempotency_key' => 'nullable|string',
+            'description' => 'nullable|string',
+            'additional_info' => 'nullable|array',
+            'payer' => 'nullable|array',
+            'payer.email' => 'nullable|email',
+            'payer.first_name' => 'nullable|string',
+            'payer.last_name' => 'nullable|string',
+            'payer.entity_type' => 'nullable|in:individual,association',
+            'payer.identification' => 'nullable|array',
+            'payer.identification.type' => 'nullable|in:CPF,CNPJ',
+            'payer.identification.number' => 'nullable|string',
+            'payer.phone' => 'nullable|array',
+            'payer.phone.area_code' => 'nullable|string',
+            'payer.phone.number' => 'nullable|string',
+            'payer.address' => 'nullable|array',
+            'payer.address.zip_code' => 'nullable|string',
+            'payer.address.street_name' => 'nullable|string',
+            'payer.address.street_number' => 'nullable|string',
+            'payer.address.neighborhood' => 'nullable|string',
+            'payer.address.state' => 'nullable|string',
+            'payer.address.city' => 'nullable|string',
+            'payer.address.complement' => 'nullable|string',
         ]);
 
         $user = auth()->user();
         $tenant = $user->tenant;
         $plan = Plan::findOrFail($validated['plan_id']);
 
+        Log::info('Payment create request', [
+            'trace_id' => $traceId,
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'plan_id' => $plan->id,
+            'payment_method' => $validated['payment_method'],
+            'installments' => $validated['installments'] ?? 1,
+            'payer_override' => !empty($validated['payer'] ?? null),
+        ]);
+
         // Verificar se já tem subscription ativa
-        $existingSubscription = $tenant->subscriptions()
+        $existingSubscription = Subscription::where('tenant_id', $tenant->id)
             ->where('status', 'active')
-            ->whereDate('period_end', '>=', now())
+            ->where('current_period_end', '>=', now())
             ->first();
 
         if ($existingSubscription) {
@@ -54,6 +87,7 @@ class PaymentController extends Controller
                 'status' => 'error',
                 'message' => 'Você já possui uma assinatura ativa',
                 'current_plan' => $existingSubscription->plan->name,
+                'trace_id' => $traceId,
             ], 400);
         }
 
@@ -62,10 +96,15 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Token de cartão obrigatório. Use Mercado Pago SDK para tokenizar.',
+                'trace_id' => $traceId,
             ], 422);
         }
 
         // Criar pagamento
+        $payer = $validated['payer'] ?? [];
+        $payer['email'] = $payer['email'] ?? $user->email;
+        $payer['first_name'] = $payer['first_name'] ?? ($user->name ?? 'Cliente');
+
         $result = $this->mercadopago->createPayment(
             paymentMethod: $validated['payment_method'],
             amountInCents: $plan->price_cents,
@@ -76,7 +115,10 @@ class PaymentController extends Controller
                 'idempotency_key' => $validated['idempotency_key'] ?? null,
                 'installments' => $validated['installments'] ?? 1,
                 'card_brand' => $validated['card_brand'] ?? null,
-                'payer_first_name' => $user->name ?? 'Cliente',
+                'description' => $validated['description'] ?? null,
+                'additional_info' => $validated['additional_info'] ?? null,
+                'payer' => $payer,
+                'trace_id' => $traceId,
             ]
         );
 
@@ -86,39 +128,44 @@ class PaymentController extends Controller
                 'plan_id' => $plan->id,
                 'method' => $validated['payment_method'],
                 'error' => $result['message'],
+                'code' => $result['code'] ?? null,
+                'trace_id' => $traceId,
             ]);
 
             return response()->json([
                 'status' => 'error',
                 'message' => $result['message'],
                 'code' => $result['code'] ?? null,
+                'trace_id' => $traceId,
             ], 422);
         }
 
-        $orderId = $result['order_id'];
+        $paymentId = $result['payment_id'];
 
         // Criar subscription em estado "pending" (será ativada pelo webhook ou /debug)
         $subscription = Subscription::create([
             'tenant_id' => $tenant->id,
             'plan_id' => $plan->id,
             'status' => $validated['payment_method'] === 'pix' ? 'pending' : 'pending',
-            'period_start' => now(),
-            'period_end' => now()->addMonth(),
+            'current_period_start' => now(),
+            'current_period_end' => now()->addMonth(),
             'next_billing_date' => now()->addMonth(),
-            'external_payment_id' => $orderId,
+            'external_payment_id' => $paymentId,
         ]);
 
         Log::info('Payment created', [
             'tenant_id' => $tenant->id,
             'plan_id' => $plan->id,
-            'order_id' => $orderId,
+            'payment_id' => $paymentId,
             'method' => $validated['payment_method'],
             'amount' => $plan->price_cents / 100,
+            'trace_id' => $traceId,
         ]);
 
         // Adicionar subscription_id à resposta
         $result['subscription_id'] = $subscription->id;
         $result['plan_name'] = $plan->name;
+        $result['trace_id'] = $traceId;
 
         $statusCode = $result['status'] === 'pending' ? 202 : 200;
         return response()->json($result, $statusCode);
@@ -157,12 +204,13 @@ class PaymentController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'payment_id' => $paymentStatus['id'],
+            'payment_id' => $paymentStatus['payment_id'],
             'payment_status' => $paymentStatus['payment_status'],
             'amount' => $paymentStatus['amount'],
             'currency' => 'BRL',
             'subscription_status' => $subscription->status,
             'plan_name' => $subscription->plan->name,
+            'mp_payment' => $paymentStatus,
         ], 200);
     }
 
@@ -177,9 +225,9 @@ class PaymentController extends Controller
         $user = auth()->user();
         $tenant = $user->tenant;
 
-        $subscription = $tenant->subscriptions()
+        $subscription = Subscription::where('tenant_id', $tenant->id)
             ->where('status', 'active')
-            ->whereDate('period_end', '>=', now())
+            ->where('current_period_end', '>=', now())
             ->with('plan')
             ->first();
 
@@ -196,8 +244,8 @@ class PaymentController extends Controller
                 'id' => $subscription->id,
                 'plan' => $subscription->plan->name,
                 'monthly_tokens' => $subscription->plan->monthly_token_limit,
-                'period_start' => $subscription->period_start->toIso8601String(),
-                'period_end' => $subscription->period_end->toIso8601String(),
+                'period_start' => $subscription->current_period_start->toIso8601String(),
+                'period_end' => $subscription->current_period_end->toIso8601String(),
                 'status' => $subscription->status,
             ],
         ], 200);

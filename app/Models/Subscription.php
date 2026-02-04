@@ -17,6 +17,8 @@ class Subscription extends Model
         'current_period_start',
         'current_period_end',
         'cancel_at',
+        'next_billing_date',
+        'external_payment_id',
     ];
 
     public function tenant(): BelongsTo

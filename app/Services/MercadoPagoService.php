@@ -15,7 +15,7 @@ class MercadoPagoService
 {
     private string $accessToken;
     private string $baseUrl = 'https://api.mercadopago.com';
-    private string $sandboxUrl = 'https://api.sandbox.mercadopago.com';
+    private string $sandboxUrl = 'https://api.mercadopago.com';
     private bool $isSandbox;
 
     public function __construct()
@@ -41,7 +41,7 @@ class MercadoPagoService
     }
 
     /**
-     * Criar ordem usando /v1/orders (novo modelo Mercado Pago)
+     * Criar pagamento usando /v1/payments
      * Suporta: PIX, Cartão Crédito, Cartão Débito
      *
      * @param string $paymentMethod 'pix' | 'credit_card' | 'debit_card'
@@ -64,6 +64,10 @@ class MercadoPagoService
         try {
             $amount = number_format($amountInCents / 100, 2, '.', '');
             $idempotencyKey = $this->getIdempotencyKey($options['idempotency_key'] ?? null);
+            $traceId = $options['trace_id'] ?? (string) Str::uuid();
+            $payer = $options['payer'] ?? [];
+            $payer['email'] = $payer['email'] ?? $email;
+            $payer['first_name'] = $payer['first_name'] ?? ($options['payer_first_name'] ?? 'Cliente');
 
             // Determinar tipo de pagamento e method_id
             $paymentMethodId = match ($paymentMethod) {
@@ -73,40 +77,22 @@ class MercadoPagoService
                 default => 'visa',
             };
 
-            // Estrutura base da ordem
             $payload = [
-                'type' => 'online',
+                'transaction_amount' => (float) $amount,
+                'description' => $options['description'] ?? 'Subscription payment',
                 'external_reference' => $tenantId,
-                'total_amount' => $amount,
-                'transactions' => [
-                    'payments' => [
-                        [
-                            'amount' => $amount,
-                            'payment_method' => [
-                                'id' => $paymentMethodId,
-                                'type' => $this->getPaymentType($paymentMethod),
-                            ],
-                        ],
-                    ],
-                ],
-                'payer' => [
-                    'email' => $email,
-                    'first_name' => $options['payer_first_name'] ?? 'Cliente',
-                ],
-                'processing_mode' => 'automatic',
+                'payment_method_id' => $paymentMethodId,
+                'payer' => $this->filterNulls($payer),
+                'installments' => $options['installments'] ?? 1,
             ];
+
+            if (!empty($options['additional_info']) && is_array($options['additional_info'])) {
+                $payload['additional_info'] = $options['additional_info'];
+            }
 
             // Adicionar token se cartão
             if (in_array($paymentMethod, ['credit_card', 'debit_card']) && $token) {
-                $payload['transactions']['payments'][0]['payment_method']['token'] = $token;
-                $payload['transactions']['payments'][0]['payment_method']['installments'] = 
-                    $options['installments'] ?? 1;
-            }
-
-            // PIX: adicionar expiração
-            if ($paymentMethod === 'pix') {
-                $payload['transactions']['payments'][0]['expiration_time'] = 
-                    $options['expiration_time'] ?? 'P1D';
+                $payload['token'] = $token;
             }
 
             // Para testes: APRO ativa PIX automático no sandbox
@@ -114,16 +100,29 @@ class MercadoPagoService
                 $payload['payer']['first_name'] = 'APRO';
             }
 
+            Log::info('MercadoPago create payment request', [
+                'trace_id' => $traceId,
+                'payment_method' => $paymentMethod,
+                'payment_method_id' => $paymentMethodId,
+                'amount' => $amount,
+                'tenant_id' => $tenantId,
+                'is_sandbox' => $this->isSandbox,
+                'base_url' => $this->getBaseUrl(),
+                'idempotency_key' => $idempotencyKey,
+                'payer_has_identification' => !empty($payer['identification'] ?? null),
+            ]);
+
             $request = Http::withToken($this->accessToken)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                     'X-Idempotency-Key' => $idempotencyKey,
                 ]);
 
-            $response = $request->post("{$this->getBaseUrl()}/v1/orders", $payload);
+            $response = $request->post("{$this->getBaseUrl()}/v1/payments", $payload);
 
             if ($response->failed()) {
-                Log::error('MercadoPago Order Error', [
+                Log::error('MercadoPago Payment Error', [
+                    'trace_id' => $traceId,
                     'status' => $response->status(),
                     'body' => $response->json(),
                     'method' => $paymentMethod,
@@ -137,12 +136,21 @@ class MercadoPagoService
             }
 
             $data = $response->json();
-            return $this->parseOrderResponse($data, $paymentMethod);
+            Log::info('MercadoPago create payment response', [
+                'trace_id' => $traceId,
+                'status' => $response->status(),
+                'payment_id' => $data['id'] ?? null,
+                'payment_status' => $data['status'] ?? null,
+                'payment_status_detail' => $data['status_detail'] ?? null,
+            ]);
+            return $this->parsePaymentResponseV1($data, $paymentMethod);
 
         } catch (Exception $e) {
             Log::error('MercadoPago Exception', [
+                'trace_id' => $traceId ?? null,
+                'exception' => get_class($e),
+                'code' => $e->getCode(),
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return [
@@ -153,24 +161,78 @@ class MercadoPagoService
     }
 
     /**
-     * Mapear tipo de pagamento
+     * Remover valores nulos/arrays vazios do payload (recursivo)
      */
-    private function getPaymentType(string $paymentMethod): string
+    private function filterNulls(array $data): array
     {
-        return match ($paymentMethod) {
-            'pix' => 'bank_transfer',
-            'credit_card' => 'credit_card',
-            'debit_card' => 'debit_card',
-            default => 'credit_card',
-        };
+        $filtered = [];
+
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $nested = $this->filterNulls($value);
+                if ($nested !== []) {
+                    $filtered[$key] = $nested;
+                }
+                continue;
+            }
+
+            if ($value !== null && $value !== '') {
+                $filtered[$key] = $value;
+            }
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * Parsear resposta do payment conforme tipo de pagamento
+     */
+    private function parsePaymentResponseV1(array $data, string $paymentMethod): array
+    {
+        $paymentId = $data['id'] ?? null;
+        $status = $data['status'] ?? null;
+        $statusDetail = $data['status_detail'] ?? null;
+        $amount = $data['transaction_amount'] ?? 0;
+        $paymentMethodId = $data['payment_method_id'] ?? null;
+        $paymentTypeId = $data['payment_type_id'] ?? null;
+
+        $isApproved = in_array($status, ['approved', 'authorized', 'processed'], true);
+        $isPending = in_array($status, ['pending', 'in_process'], true);
+        $resultStatus = $isApproved ? 'success' : ($isPending ? 'pending' : 'error');
+
+        $response = [
+            'status' => $resultStatus,
+            'payment_id' => $paymentId,
+            'payment_status' => $status,
+            'payment_status_detail' => $statusDetail,
+            'amount' => $amount,
+            'currency' => $data['currency_id'] ?? 'BRL',
+            'payment_method' => $paymentMethodId,
+            'payment_type' => $paymentTypeId,
+        ];
+
+        // PIX: retornar QR Code
+        if ($paymentMethod === 'pix' || $paymentTypeId === 'bank_transfer') {
+            $transactionData = $data['point_of_interaction']['transaction_data'] ?? [];
+            $response['qr_code'] = $transactionData['qr_code'] ?? null;
+            $response['qr_code_base64'] = $transactionData['qr_code_base64'] ?? null;
+            $response['ticket_url'] = $transactionData['ticket_url'] ?? null;
+            $response['message'] = 'QR Code PIX gerado. Escaneie com seu banco.';
+        } else {
+            $response['message'] = $this->getCardMessage($status ?? 'unknown');
+        }
+
+        return $response;
     }
 
     /**
      * Parsear resposta da ordem conforme tipo de pagamento
      */
-    private function parseOrderResponse(array $data, string $paymentMethod): array
+    private function parsePaymentResponse(array $data, string $paymentMethod): array
     {
-        $orderId = $data['id'] ?? null;
+        return $this->parsePaymentResponseV1($data, $paymentMethod);
+
+        $paymentId = $data['id'] ?? null;
         $status = $data['status'] ?? null;
         $statusDetail = $data['status_detail'] ?? null;
         $totalAmount = $data['total_amount'] ?? 0;
@@ -241,44 +303,61 @@ class MercadoPagoService
     }
 
     /**
-     * Obter status de uma ordem
+     * Obter status de um pagamento
      */
-    public function getPaymentStatus(string $orderId): array
+    public function getPaymentStatus(string $paymentId): array
     {
         try {
+            Log::info('MercadoPago get payment request', [
+                'payment_id' => $paymentId,
+                'is_sandbox' => $this->isSandbox,
+                'base_url' => $this->getBaseUrl(),
+            ]);
+
             $response = Http::withToken($this->accessToken)
-                ->get("{$this->getBaseUrl()}/v1/orders/$orderId");
+                ->get("{$this->getBaseUrl()}/v1/payments/$paymentId");
 
             if ($response->failed()) {
+                Log::warning('MercadoPago get payment failed', [
+                    'payment_id' => $paymentId,
+                    'status' => $response->status(),
+                    'body' => $response->json(),
+                ]);
                 return [
                     'status' => 'error',
-                    'message' => 'Ordem não encontrada',
+                    'message' => 'Pagamento não encontrado',
                 ];
             }
 
             $data = $response->json();
-            $payment = $data['transactions']['payments'][0] ?? [];
+            Log::info('MercadoPago get payment response', [
+                'payment_id' => $data['id'] ?? null,
+                'payment_status' => $data['status'] ?? null,
+                'payment_status_detail' => $data['status_detail'] ?? null,
+            ]);
 
             return [
                 'status' => 'success',
-                'order_id' => $data['id'],
-                'order_status' => $data['status'],
-                'order_status_detail' => $data['status_detail'] ?? null,
-                'payment_id' => $payment['id'] ?? null,
-                'payment_status' => $payment['status'] ?? null,
-                'amount' => $data['total_amount'],
-                'payment_method' => $payment['payment_method']['id'] ?? null,
-                'payment_method_type' => $payment['payment_method']['type'] ?? null,
+                'payment_id' => $data['id'],
+                'payment_status' => $data['status'],
+                'payment_status_detail' => $data['status_detail'] ?? null,
+                'amount' => $data['transaction_amount'],
+                'currency' => $data['currency_id'] ?? 'BRL',
+                'payment_method' => $data['payment_method_id'] ?? null,
+                'payment_type' => $data['payment_type_id'] ?? null,
+                'point_of_interaction' => $data['point_of_interaction'] ?? null,
             ];
         } catch (Exception $e) {
-            Log::error('MercadoPago Get Order Error', [
-                'id' => $orderId,
+            Log::error('MercadoPago Get Payment Error', [
+                'id' => $paymentId,
+                'exception' => get_class($e),
+                'code' => $e->getCode(),
                 'message' => $e->getMessage(),
             ]);
 
             return [
                 'status' => 'error',
-                'message' => 'Erro ao buscar status da ordem',
+                'message' => 'Erro ao buscar status do pagamento',
             ];
         }
     }
@@ -304,44 +383,43 @@ class MercadoPagoService
         $paymentStatus = $this->getPaymentStatus($dataId);
 
         if ($paymentStatus['status'] !== 'success') {
-            Log::warning('Could not fetch order details', ['order_id' => $dataId]);
+            Log::warning('Could not fetch payment details', ['payment_id' => $dataId]);
             return;
         }
 
         // Apenas processar pagamentos aprovados
-        if (!in_array($paymentStatus['payment_status'], ['processed', 'approved'])) {
+        if (!in_array($paymentStatus['payment_status'], ['processed', 'approved', 'authorized'])) {
             Log::info('Payment not approved', [
-                'order_id' => $dataId,
+                'payment_id' => $dataId,
                 'status' => $paymentStatus['payment_status'],
             ]);
             return;
         }
 
-        // Encontrar subscription pelo order_id
-        $subscription = Subscription::where('external_payment_id', $paymentStatus['order_id'])
-            ->orWhere('external_payment_id', $dataId)
+        // Encontrar subscription pelo payment_id
+        $subscription = Subscription::where('external_payment_id', $paymentStatus['payment_id'] ?? $dataId)
             ->first();
 
         if (!$subscription) {
-            Log::warning('Webhook: subscription not found', ['order_id' => $dataId]);
+            Log::warning('Webhook: subscription not found', ['payment_id' => $dataId]);
             return;
         }
 
         // Atualizar subscription
         $subscription->update([
             'status' => 'active',
-            'period_start' => now(),
-            'period_end' => now()->addMonth(),
+            'current_period_start' => now(),
+            'current_period_end' => now()->addMonth(),
             'next_billing_date' => now()->addMonth(),
         ]);
 
         // Registrar evento de billing
         BillingEvent::create([
             'tenant_id' => $subscription->tenant_id,
-            'type' => 'payment_received',
-            'amount_cents' => (int)($paymentStatus['amount'] * 100),
-            'external_id' => $paymentStatus['order_id'],
-            'metadata' => [
+            'event_type' => 'payment_received',
+            'payload' => [
+                'amount_cents' => (int)($paymentStatus['amount'] * 100),
+                'external_id' => $paymentStatus['payment_id'],
                 'payment_id' => $paymentStatus['payment_id'],
                 'payment_method' => $paymentStatus['payment_method'],
                 'webhook_received_at' => now()->toIso8601String(),
@@ -350,7 +428,7 @@ class MercadoPagoService
 
         Log::info('Subscription activated via webhook', [
             'tenant_id' => $subscription->tenant_id,
-            'order_id' => $dataId,
+            'payment_id' => $dataId,
             'amount' => $paymentStatus['amount'],
         ]);
     }
@@ -358,25 +436,25 @@ class MercadoPagoService
     /**
      * DEBUG: simular webhook (apenas em APP_DEBUG=true)
      */
-    public function debugTestWebhook(string $orderId): array
+    public function debugTestWebhook(string $paymentId): array
     {
-        $payment = $this->getPaymentStatus($orderId);
+        $payment = $this->getPaymentStatus($paymentId);
 
         if ($payment['status'] !== 'success') {
-            return ['error' => 'Order not found'];
+            return ['error' => 'Payment not found'];
         }
 
         $this->handleWebhook([
             'type' => 'payment',
             'action' => 'payment.updated',
             'data' => [
-                'id' => $orderId,
+                'id' => $paymentId,
             ],
         ]);
 
         return [
             'message' => 'Webhook simulated',
-            'order' => $payment,
+            'payment' => $payment,
         ];
     }
 }
