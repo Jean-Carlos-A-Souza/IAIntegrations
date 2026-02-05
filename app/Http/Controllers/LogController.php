@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class LogController extends Controller
 {
@@ -56,9 +57,41 @@ class LogController extends Controller
             ], 404);
         }
 
-        return response()->file($path, [
-            'Content-Type' => 'text/plain; charset=UTF-8',
-            'X-Log-Date' => $date,
-        ]);
+        if (!is_readable($path)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Log file not readable',
+                'date' => $date,
+            ], 403);
+        }
+
+        try {
+            $content = file_get_contents($path);
+            if ($content === false) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Failed to read log file',
+                    'date' => $date,
+                ], 500);
+            }
+
+            return response($content, 200, [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+                'X-Log-Date' => $date,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Log file response failed', [
+                'path' => $path,
+                'date' => $date,
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to read log file',
+                'date' => $date,
+            ], 500);
+        }
     }
 }
