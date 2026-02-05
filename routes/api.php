@@ -12,8 +12,8 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
-use App\\Http\\Controllers\\HealthController;
-use App\\Http\\Controllers\\LogController;
+use App\Http\Controllers\HealthController;
+use App\Http\Controllers\LogController;
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,1');
