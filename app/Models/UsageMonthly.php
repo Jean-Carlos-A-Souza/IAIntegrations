@@ -10,6 +10,8 @@ class UsageMonthly extends Model
 {
     use HasFactory;
 
+    protected $table = 'usage_monthly';
+
     protected $fillable = [
         'tenant_id',
         'month',
