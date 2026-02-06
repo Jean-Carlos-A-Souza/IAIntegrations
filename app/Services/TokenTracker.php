@@ -2,19 +2,18 @@
 
 namespace App\Services;
 
-use App\Models\UsageMonthly;
 use App\Models\BillingEvent;
-use Illuminate\Support\Carbon;
+use App\Models\UsageMonthly;
 
 class TokenTracker
 {
     /**
-     * Rastreia tokens consumidos por uma operação
+     * Track tokens consumed by an operation.
      *
      * @param int $tenantId
      * @param int $tokensConsumed
      * @param string $operation (e.g., 'document.upload', 'chat.ask')
-     * @param array $metadata Dados adicionais
+     * @param array $metadata
      */
     public static function trackTokens(
         int $tenantId,
@@ -28,10 +27,9 @@ class TokenTracker
 
         $currentMonth = now()->format('Y-m');
 
-        // Atualizar ou criar UsageMonthly
         $usage = UsageMonthly::query()
             ->where('tenant_id', $tenantId)
-            ->where('month', 'LIKE', $currentMonth . '%')
+            ->where('month', 'LIKE', $currentMonth.'%')
             ->first();
 
         if ($usage) {
@@ -46,22 +44,22 @@ class TokenTracker
             ]);
         }
 
-        // Criar evento de billing para auditoria
         BillingEvent::create([
             'tenant_id' => $tenantId,
-            'type' => 'token_consumed',
-            'amount_cents' => 0, // Será calculado depois se houver overage
-            'tokens' => $tokensConsumed,
-            'description' => $operation,
-            'metadata' => $metadata,
+            'event_type' => 'token_consumed',
+            'payload' => [
+                'amount_cents' => 0,
+                'tokens' => $tokensConsumed,
+                'description' => $operation,
+                'metadata' => $metadata,
+            ],
         ]);
 
-        // Verificar se atingiu overage
         self::checkOverage($tenantId);
     }
 
     /**
-     * Rastreia requisições (rate limiting)
+     * Track requests (rate limiting).
      */
     public static function trackRequest(int $tenantId): void
     {
@@ -69,7 +67,7 @@ class TokenTracker
 
         $usage = UsageMonthly::query()
             ->where('tenant_id', $tenantId)
-            ->where('month', 'LIKE', $currentMonth . '%')
+            ->where('month', 'LIKE', $currentMonth.'%')
             ->first();
 
         if ($usage) {
@@ -85,7 +83,7 @@ class TokenTracker
     }
 
     /**
-     * Retorna uso do mês atual
+     * Get usage for current month.
      */
     public static function getCurrentMonthUsage(int $tenantId): array
     {
@@ -93,7 +91,7 @@ class TokenTracker
 
         $usage = UsageMonthly::query()
             ->where('tenant_id', $tenantId)
-            ->where('month', 'LIKE', $currentMonth . '%')
+            ->where('month', 'LIKE', $currentMonth.'%')
             ->first();
 
         return [
@@ -104,7 +102,7 @@ class TokenTracker
     }
 
     /**
-     * Retorna porcentagem de uso
+     * Get usage percentage.
      */
     public static function getUsagePercentage(int $tenantId, int $monthlyLimit): float
     {
@@ -113,7 +111,7 @@ class TokenTracker
     }
 
     /**
-     * Verifica se atingiu overage e cria evento
+     * Check overage and create event if needed.
      */
     private static function checkOverage(int $tenantId): void
     {
@@ -129,24 +127,24 @@ class TokenTracker
         if ($currentUsage['tokens_used'] > $monthlyLimit) {
             $overageTokens = $currentUsage['tokens_used'] - $monthlyLimit;
 
-            // Se permitir overage, criar evento
             if ($tenant->subscription->plan->overage_allowed) {
-                // Preço por token extra (exemplo: 0.01 por token)
-                $overagePrice = $overageTokens * 10; // 10 centavos por token extra
+                $overagePrice = $overageTokens * 10;
 
                 BillingEvent::create([
                     'tenant_id' => $tenantId,
-                    'type' => 'overage_charged',
-                    'amount_cents' => $overagePrice,
-                    'tokens' => $overageTokens,
-                    'description' => 'Overage tokens charged',
+                    'event_type' => 'overage_charged',
+                    'payload' => [
+                        'amount_cents' => $overagePrice,
+                        'tokens' => $overageTokens,
+                        'description' => 'Overage tokens charged',
+                    ],
                 ]);
             }
         }
     }
 
     /**
-     * Reseta uso do mês (deve ser chamado via job agendado)
+     * Reset monthly usage (call via scheduled job).
      */
     public static function resetMonthlyUsage(int $tenantId): void
     {
@@ -154,7 +152,7 @@ class TokenTracker
 
         UsageMonthly::query()
             ->where('tenant_id', $tenantId)
-            ->where('month', 'LIKE', $previousMonth . '%')
+            ->where('month', 'LIKE', $previousMonth.'%')
             ->update(['tokens_used' => 0, 'requests_count' => 0]);
     }
 }
