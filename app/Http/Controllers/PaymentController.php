@@ -142,16 +142,38 @@ class PaymentController extends Controller
 
         $paymentId = $result['payment_id'];
 
-        // Criar subscription em estado "pending" (serÃ¡ ativada pelo webhook ou /debug)
-        $subscription = Subscription::create([
-            'tenant_id' => $tenant->id,
-            'plan_id' => $plan->id,
-            'status' => $validated['payment_method'] === 'pix' ? 'pending' : 'pending',
-            'current_period_start' => now(),
-            'current_period_end' => now()->addMonth(),
-            'next_billing_date' => now()->addMonth(),
-            'external_payment_id' => $paymentId,
-        ]);
+        // Limpar subscriptions pendentes antigas (ex: > 1 hora)
+        Subscription::where('tenant_id', $tenant->id)
+            ->where('status', 'pending')
+            ->where('created_at', '<', now()->subHour())
+            ->delete();
+
+        // Reutilizar subscription pendente para o mesmo pagamento, se existir
+        $subscription = Subscription::where('tenant_id', $tenant->id)
+            ->where('external_payment_id', $paymentId)
+            ->first();
+
+        if (!$subscription) {
+            // Criar subscription em estado "pending" (será ativada pelo webhook ou aqui se aprovado)
+            $subscription = Subscription::create([
+                'tenant_id' => $tenant->id,
+                'plan_id' => $plan->id,
+                'status' => 'pending',
+                'current_period_start' => now(),
+                'current_period_end' => now()->addMonth(),
+                'next_billing_date' => now()->addMonth(),
+                'external_payment_id' => $paymentId,
+            ]);
+        }
+        // Se o pagamento já voltou aprovado, ativar a assinatura imediatamente
+        if (in_array($result['payment_status'] ?? null, ['approved', 'authorized', 'processed'], true)) {
+            $subscription->update([
+                'status' => 'active',
+                'current_period_start' => now(),
+                'current_period_end' => now()->addMonth(),
+                'next_billing_date' => now()->addMonth(),
+            ]);
+        }
 
         Log::info('Payment created', [
             'tenant_id' => $tenant->id,
@@ -201,7 +223,15 @@ class PaymentController extends Controller
                 'message' => $paymentStatus['message'],
             ], 404);
         }
-
+        // Se o pagamento foi aprovado agora, ativar a assinatura
+        if (in_array($paymentStatus['payment_status'] ?? null, ['approved', 'authorized', 'processed'], true)) {
+            $subscription->update([
+                'status' => 'active',
+                'current_period_start' => now(),
+                'current_period_end' => now()->addMonth(),
+                'next_billing_date' => now()->addMonth(),
+            ]);
+        }
         return response()->json([
             'status' => 'success',
             'payment_id' => $paymentStatus['payment_id'],
@@ -237,7 +267,15 @@ class PaymentController extends Controller
                 'message' => 'Nenhuma assinatura ativa',
             ], 404);
         }
-
+        // Se o pagamento foi aprovado agora, ativar a assinatura
+        if (in_array($paymentStatus['payment_status'] ?? null, ['approved', 'authorized', 'processed'], true)) {
+            $subscription->update([
+                'status' => 'active',
+                'current_period_start' => now(),
+                'current_period_end' => now()->addMonth(),
+                'next_billing_date' => now()->addMonth(),
+            ]);
+        }
         return response()->json([
             'status' => 'success',
             'subscription' => [
