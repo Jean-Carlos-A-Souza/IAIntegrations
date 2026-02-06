@@ -41,6 +41,27 @@ class ChatController extends Controller
             ]);
         }
 
+        if (!$this->rag->hasDocumentsForTenant($tenant->id)) {
+            $answer = 'Nao encontrei base de conhecimento suficiente para responder a sua pergunta.';
+            $usageTokens = $this->tokens->estimateTokens($answer);
+
+            FaqCache::query()->create([
+                'tenant_id' => $tenant->id,
+                'question_normalized' => $normalized,
+                'answer' => $answer,
+                'hits' => 1,
+                'tokens_saved' => 0,
+            ]);
+
+            return response()->json([
+                'answer' => $answer,
+                'cached' => false,
+                'tokens' => $usageTokens,
+                'sources' => [],
+                'reason' => 'no_knowledge_base',
+            ]);
+        }
+
         $embeddingResponse = $this->openAI->embed([$question]);
         $embedding = $embeddingResponse['data'][0]['embedding'] ?? [];
         $contextChunks = $this->rag->searchSimilar($embedding, $tenant->id);

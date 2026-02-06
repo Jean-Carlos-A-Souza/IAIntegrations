@@ -7,6 +7,13 @@ use Illuminate\Support\Facades\DB;
 
 class RAGService
 {
+    public function hasDocumentsForTenant(int $tenantId): bool
+    {
+        return DB::table('documents')
+            ->where('tenant_id', $tenantId)
+            ->exists();
+    }
+
     public function chunkText(string $text, int $maxTokens = 800): array
     {
         $words = preg_split('/\s+/', trim($text));
