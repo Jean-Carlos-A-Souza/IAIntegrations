@@ -23,7 +23,9 @@ class UsageController extends Controller
 
     public function topQuestions()
     {
+        $tenant = TenantContext::getTenant();
         $results = FaqCache::query()
+            ->where('tenant_id', $tenant->id)
             ->orderByDesc('hits')
             ->limit(10)
             ->get(['question_normalized', 'hits']);

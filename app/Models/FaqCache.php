@@ -11,6 +11,7 @@ class FaqCache extends TenantModel
     protected $table = 'faq_cache';
 
     protected $fillable = [
+        'tenant_id',
         'question_normalized',
         'answer',
         'hits',

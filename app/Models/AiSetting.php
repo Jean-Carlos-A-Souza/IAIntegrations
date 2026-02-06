@@ -11,6 +11,7 @@ class AiSetting extends TenantModel
     protected $table = 'settings_ai';
 
     protected $fillable = [
+        'tenant_id',
         'tone',
         'language',
         'detail_level',

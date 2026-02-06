@@ -10,6 +10,7 @@ use App\Models\ChatMessage;
 use App\Models\FaqCache;
 use App\Services\OpenAIService;
 use App\Services\RAGService;
+use App\Services\TenantContext;
 use App\Services\TokenCounter;
 
 class ChatController extends Controller
@@ -23,10 +24,14 @@ class ChatController extends Controller
 
     public function ask(ChatAskRequest $request)
     {
+        $tenant = TenantContext::getTenant();
         $question = $request->input('question');
         $normalized = $this->rag->normalizeQuestion($question);
 
-        $cached = FaqCache::query()->where('question_normalized', $normalized)->first();
+        $cached = FaqCache::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('question_normalized', $normalized)
+            ->first();
         if ($cached) {
             $cached->increment('hits');
 
@@ -38,13 +43,36 @@ class ChatController extends Controller
 
         $embeddingResponse = $this->openAI->embed([$question]);
         $embedding = $embeddingResponse['data'][0]['embedding'] ?? [];
-        $contextChunks = $this->rag->searchSimilar($embedding);
+        $contextChunks = $this->rag->searchSimilar($embedding, $tenant->id);
+
+        if (empty($contextChunks)) {
+            $answer = 'Nao encontrei base de conhecimento suficiente para responder a sua pergunta.';
+            $usageTokens = $this->tokens->estimateTokens($answer);
+
+            FaqCache::query()->create([
+                'tenant_id' => $tenant->id,
+                'question_normalized' => $normalized,
+                'answer' => $answer,
+                'hits' => 1,
+                'tokens_saved' => 0,
+            ]);
+
+            return response()->json([
+                'answer' => $answer,
+                'cached' => false,
+                'tokens' => $usageTokens,
+                'sources' => [],
+                'reason' => 'no_knowledge_base',
+            ]);
+        }
 
         $context = collect($contextChunks)
             ->pluck('content')
             ->implode("\n\n");
 
-        $settings = AiSetting::query()->first();
+        $settings = AiSetting::query()
+            ->where('tenant_id', $tenant->id)
+            ->first();
 
         $systemPrompt = $this->buildSystemPrompt($settings);
 
@@ -57,6 +85,7 @@ class ChatController extends Controller
         $usageTokens = $chatResponse['usage']['total_tokens'] ?? $this->tokens->estimateTokens($answer);
 
         FaqCache::query()->create([
+            'tenant_id' => $tenant->id,
             'question_normalized' => $normalized,
             'answer' => $answer,
             'hits' => 1,
@@ -113,7 +142,12 @@ class ChatController extends Controller
         $tone = $settings?->tone ?? 'direto';
         $language = $settings?->language ?? 'pt-BR';
         $detail = $settings?->detail_level ?? 'medio';
+        $securityRules = $settings?->security_rules ?? [];
+        $rulesText = '';
+        if (is_array($securityRules) && !empty($securityRules)) {
+            $rulesText = ' Regras de seguranca: '.implode(' | ', $securityRules).'.';
+        }
 
-        return "Você é a IA da IAFuture. Tom: {$tone}. Idioma: {$language}. Detalhe: {$detail}. Siga regras de segurança do tenant.";
+        return "Voce e a IA da IAFuture. Tom: {$tone}. Idioma: {$language}. Detalhe: {$detail}.{$rulesText}";
     }
 }

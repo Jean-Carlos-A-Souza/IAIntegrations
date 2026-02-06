@@ -32,15 +32,25 @@ class RAGService
         return $chunks;
     }
 
-    public function searchSimilar(array $embedding, int $limit = 5): array
+    public function searchSimilar(array $embedding, ?int $tenantId = null, int $limit = 5): array
     {
         $embeddingLiteral = '['.implode(',', $embedding).']';
 
-        $results = DB::table('document_chunks')
-            ->select(['id', 'document_id', 'content'])
-            ->orderByRaw('embedding <-> ?::vector', [$embeddingLiteral])
-            ->limit($limit)
-            ->get();
+        $query = DB::table('document_chunks')
+            ->select([
+                'document_chunks.id',
+                'document_chunks.document_id',
+                'document_chunks.content',
+            ])
+            ->orderByRaw('embedding <-> ?::vector', [$embeddingLiteral]);
+
+        if ($tenantId !== null) {
+            $query = $query
+                ->join('documents', 'documents.id', '=', 'document_chunks.document_id')
+                ->where('documents.tenant_id', $tenantId);
+        }
+
+        $results = $query->limit($limit)->get();
 
         return $results->toArray();
     }
