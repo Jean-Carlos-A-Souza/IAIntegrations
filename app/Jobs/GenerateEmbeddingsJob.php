@@ -32,7 +32,7 @@ class GenerateEmbeddingsJob implements ShouldQueue
         DB::table('document_chunks')
             ->where('id', $this->chunkId)
             ->update([
-                'embedding' => DB::raw(\"'{$embeddingLiteral}'::vector\"),
+                'embedding' => DB::raw("'{$embeddingLiteral}'::vector"),
                 'tokens' => count($embedding),
                 'updated_at' => now(),
             ]);
