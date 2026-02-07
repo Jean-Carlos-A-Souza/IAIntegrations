@@ -7,6 +7,7 @@ return [
     'chunk_overlap' => (int) env('KNOWLEDGE_CHUNK_OVERLAP', 100),
     'preview_length' => (int) env('KNOWLEDGE_PREVIEW_LENGTH', 1500),
     'process_async' => env('KNOWLEDGE_PROCESS_ASYNC', false),
+    'generate_embeddings' => env('KNOWLEDGE_GENERATE_EMBEDDINGS', true),
     'allowed_mime_types' => [
         'text/plain',
         'text/markdown',

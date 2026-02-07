@@ -67,7 +67,8 @@ if [ "$ROLE" = "web" ]; then
   exec php artisan serve --host=0.0.0.0 --port="${PORT:-8000}"
 
 elif [ "$ROLE" = "queue" ]; then
-  exec php artisan queue:work --tries=3 --timeout=120 --no-interaction
+  echo "Starting queue worker..."
+  exec php artisan queue:work --tries=3 --timeout=120 --sleep=1 --no-interaction --verbose
 
 elif [ "$ROLE" = "scheduler" ]; then
   while true; do

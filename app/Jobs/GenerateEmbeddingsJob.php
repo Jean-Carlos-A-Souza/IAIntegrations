@@ -14,7 +14,7 @@ class GenerateEmbeddingsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(public readonly int $documentId, public readonly string $chunk)
+    public function __construct(public readonly int $chunkId, public readonly string $chunk)
     {
     }
 
@@ -23,15 +23,18 @@ class GenerateEmbeddingsJob implements ShouldQueue
         $embeddingResponse = $openAI->embed([$this->chunk]);
         $embedding = $embeddingResponse['data'][0]['embedding'] ?? [];
 
+        if (empty($embedding)) {
+            return;
+        }
+
         $embeddingLiteral = '['.implode(',', $embedding).']';
 
-        DB::table('document_chunks')->insert([
-            'document_id' => $this->documentId,
-            'content' => $this->chunk,
-            'embedding' => DB::raw(\"'{$embeddingLiteral}'::vector\"),
-            'tokens' => count($embedding),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        DB::table('document_chunks')
+            ->where('id', $this->chunkId)
+            ->update([
+                'embedding' => DB::raw(\"'{$embeddingLiteral}'::vector\"),
+                'tokens' => count($embedding),
+                'updated_at' => now(),
+            ]);
     }
 }

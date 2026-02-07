@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\DocumentChunk;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class RAGService
 {
@@ -41,6 +43,11 @@ class RAGService
 
     public function searchSimilar(array $embedding, ?int $tenantId = null, int $limit = 5): array
     {
+        if (!Schema::hasColumn('document_chunks', 'embedding')) {
+            Log::warning('RAG search skipped: missing embedding column');
+            return [];
+        }
+
         $embeddingLiteral = '['.implode(',', $embedding).']';
 
         $query = DB::table('document_chunks')
@@ -49,6 +56,7 @@ class RAGService
                 'document_chunks.document_id',
                 'document_chunks.content',
             ])
+            ->whereNotNull('document_chunks.embedding')
             ->orderByRaw('embedding <-> ?::vector', [$embeddingLiteral]);
 
         if ($tenantId !== null) {

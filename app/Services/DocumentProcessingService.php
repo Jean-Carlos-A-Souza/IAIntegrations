@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Document;
 use App\Models\DocumentChunk;
+use App\Jobs\GenerateEmbeddingsJob;
 use App\Models\Tenant;
 use App\Services\TenantContext;
 use Illuminate\Http\UploadedFile;
@@ -61,7 +62,7 @@ class DocumentProcessingService
                     $chunkTokens = $this->estimateTokens($chunk);
                     $tokensEstimated += $chunkTokens;
 
-                    DocumentChunk::query()->create([
+                    $chunkModel = DocumentChunk::query()->create([
                         'document_id' => $document->id,
                         'chunk_index' => $index,
                         'content' => $chunk,
@@ -69,6 +70,10 @@ class DocumentProcessingService
                         'content_hash' => hash('sha256', $chunk),
                         'tokens' => $chunkTokens,
                     ]);
+
+                    if (config('knowledge.generate_embeddings', true)) {
+                        GenerateEmbeddingsJob::dispatch($chunkModel->id, $chunk);
+                    }
                 }
 
                 $document->update([
