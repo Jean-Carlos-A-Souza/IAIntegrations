@@ -28,16 +28,39 @@ class ChatController extends Controller
         $question = $request->input('question');
         $normalized = $this->rag->normalizeQuestion($question);
 
+        $quickReply = $this->quickReply($normalized);
+        if ($quickReply !== null) {
+            FaqCache::query()->create([
+                'tenant_id' => $tenant->id,
+                'question_normalized' => $normalized,
+                'answer' => $quickReply,
+                'hits' => 1,
+                'tokens_saved' => 0,
+            ]);
+
+            $this->tokens->recordUsage(0);
+
+            return response()->json([
+                'answer' => $quickReply,
+                'cached' => false,
+                'tokens' => 0,
+                'sources' => [],
+                'reason' => 'quick_reply',
+            ]);
+        }
+
         $cached = FaqCache::query()
             ->where('tenant_id', $tenant->id)
             ->where('question_normalized', $normalized)
             ->first();
         if ($cached) {
             $cached->increment('hits');
+            $this->tokens->recordUsage(0);
 
             return response()->json([
                 'answer' => $cached->answer,
                 'cached' => true,
+                'tokens' => 0,
             ]);
         }
 
@@ -52,6 +75,8 @@ class ChatController extends Controller
                 'hits' => 1,
                 'tokens_saved' => 0,
             ]);
+
+            $this->tokens->recordUsage(0);
 
             return response()->json([
                 'answer' => $answer,
@@ -77,6 +102,8 @@ class ChatController extends Controller
                 'hits' => 1,
                 'tokens_saved' => 0,
             ]);
+
+            $this->tokens->recordUsage(0);
 
             return response()->json([
                 'answer' => $answer,
@@ -169,6 +196,43 @@ class ChatController extends Controller
             $rulesText = ' Regras de seguranca: '.implode(' | ', $securityRules).'.';
         }
 
-        return "Voce e a IA da IAFuture. Tom: {$tone}. Idioma: {$language}. Detalhe: {$detail}.{$rulesText}";
+        return "Voce e a IA da IAFuture. Tom: {$tone}. Idioma: {$language}. Detalhe: {$detail}. Responda somente com base no contexto fornecido. Se o contexto nao tiver a resposta, diga: 'Nao encontrei base de conhecimento suficiente para responder a sua pergunta.'.{$rulesText}";
+    }
+
+    private function quickReply(string $normalizedQuestion): ?string
+    {
+        $greetings = [
+            'oi',
+            'ola',
+            'olá',
+            'bom dia',
+            'boa tarde',
+            'boa noite',
+        ];
+
+        foreach ($greetings as $greeting) {
+            if ($normalizedQuestion === $greeting || str_starts_with($normalizedQuestion, $greeting.' ')) {
+                if ($greeting === 'bom dia') {
+                    return 'Bom dia! Como posso ajudar?';
+                }
+                if ($greeting === 'boa tarde') {
+                    return 'Boa tarde! Como posso ajudar?';
+                }
+                if ($greeting === 'boa noite') {
+                    return 'Boa noite! Como posso ajudar?';
+                }
+                return 'Ola! Como posso ajudar?';
+            }
+        }
+
+        if (preg_match('/\b(como vai|tudo bem|como esta|como está)\b/', $normalizedQuestion)) {
+            return 'Tudo bem! Em que posso ajudar?';
+        }
+
+        if (preg_match('/\b(quem e voce|quem é voce|quem e vc|quem é vc|o que voce faz|o que vc faz)\b/', $normalizedQuestion)) {
+            return 'Sou a assistente da IAFuture e respondo com base na sua base de conhecimento.';
+        }
+
+        return null;
     }
 }
