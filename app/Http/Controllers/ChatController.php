@@ -30,13 +30,22 @@ class ChatController extends Controller
 
         $quickReply = $this->quickReply($normalized);
         if ($quickReply !== null) {
-            FaqCache::query()->create([
-                'tenant_id' => $tenant->id,
-                'question_normalized' => $normalized,
-                'answer' => $quickReply,
-                'hits' => 1,
-                'tokens_saved' => 0,
-            ]);
+            $existing = FaqCache::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('question_normalized', $normalized)
+                ->first();
+
+            if ($existing) {
+                $existing->increment('hits');
+            } else {
+                FaqCache::query()->create([
+                    'tenant_id' => $tenant->id,
+                    'question_normalized' => $normalized,
+                    'answer' => $quickReply,
+                    'hits' => 1,
+                    'tokens_saved' => 0,
+                ]);
+            }
 
             $this->tokens->recordUsage(0);
 
