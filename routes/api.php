@@ -70,6 +70,8 @@ Route::middleware(['tenant.resolve', 'auth:sanctum', 'tenant.ensure', 'verify.ac
 
     Route::get('usage/monthly', [UsageController::class, 'monthly']);
     Route::get('analytics/top-questions', [UsageController::class, 'topQuestions']);
+    Route::get('analytics/questions/summary', [UsageController::class, 'questionsSummary']);
+    Route::get('analytics/questions/all', [UsageController::class, 'allQuestions']);
 
     Route::post('api-keys', [ApiKeyController::class, 'store']);
     Route::post('api-keys/{apiKey}/rotate', [ApiKeyController::class, 'rotate']);

@@ -55,4 +55,43 @@ class UsageController extends Controller
 
         return response()->json($results);
     }
+
+    public function questionsSummary()
+    {
+        $tenant = TenantContext::getTenant();
+
+        $baseQuery = FaqCache::query()->where('tenant_id', $tenant->id);
+
+        $uniqueQuestions = (clone $baseQuery)->count();
+        $totalQuestions = (clone $baseQuery)->sum('hits');
+
+        $mostAsked = (clone $baseQuery)
+            ->orderByDesc('hits')
+            ->first(['question_normalized', 'hits']);
+
+        $topQuestions = (clone $baseQuery)
+            ->orderByDesc('hits')
+            ->limit(10)
+            ->get(['question_normalized', 'hits']);
+
+        return response()->json([
+            'unique_questions' => $uniqueQuestions,
+            'total_questions' => (int) $totalQuestions,
+            'most_asked' => $mostAsked?->question_normalized,
+            'most_asked_hits' => $mostAsked?->hits ?? 0,
+            'top_questions' => $topQuestions,
+        ]);
+    }
+
+    public function allQuestions()
+    {
+        $tenant = TenantContext::getTenant();
+
+        $results = FaqCache::query()
+            ->where('tenant_id', $tenant->id)
+            ->orderByDesc('hits')
+            ->get(['question_normalized', 'hits']);
+
+        return response()->json($results);
+    }
 }
