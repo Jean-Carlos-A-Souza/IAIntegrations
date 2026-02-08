@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\FaqCache;
 use App\Models\Plan;
+use App\Models\QuestionEvent;
 use App\Models\Subscription;
 use App\Models\UsageMonthly;
 use App\Services\TenantContext;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class UsageController extends Controller
@@ -60,25 +62,33 @@ class UsageController extends Controller
     {
         $tenant = TenantContext::getTenant();
 
-        $baseQuery = FaqCache::query()->where('tenant_id', $tenant->id);
+        $baseQuery = $this->questionEventsQuery($tenant->id);
 
-        $uniqueQuestions = (clone $baseQuery)->count();
-        $totalQuestions = (clone $baseQuery)->sum('hits');
+        $uniqueQuestions = (clone $baseQuery)
+            ->select('question_normalized')
+            ->distinct()
+            ->count('question_normalized');
+
+        $totalQuestions = (clone $baseQuery)->count();
 
         $mostAsked = (clone $baseQuery)
+            ->select('question_normalized', DB::raw('count(*) as hits'))
+            ->groupBy('question_normalized')
             ->orderByDesc('hits')
-            ->first(['question_normalized', 'hits']);
+            ->first();
 
         $topQuestions = (clone $baseQuery)
+            ->select('question_normalized', DB::raw('count(*) as hits'))
+            ->groupBy('question_normalized')
             ->orderByDesc('hits')
             ->limit(10)
-            ->get(['question_normalized', 'hits']);
+            ->get();
 
         return response()->json([
             'unique_questions' => $uniqueQuestions,
             'total_questions' => (int) $totalQuestions,
             'most_asked' => $mostAsked?->question_normalized,
-            'most_asked_hits' => $mostAsked?->hits ?? 0,
+            'most_asked_hits' => (int) ($mostAsked?->hits ?? 0),
             'top_questions' => $topQuestions,
         ]);
     }
@@ -87,11 +97,42 @@ class UsageController extends Controller
     {
         $tenant = TenantContext::getTenant();
 
-        $results = FaqCache::query()
-            ->where('tenant_id', $tenant->id)
+        $results = $this->questionEventsQuery($tenant->id)
+            ->select('question_normalized', DB::raw('count(*) as hits'))
+            ->groupBy('question_normalized')
             ->orderByDesc('hits')
-            ->get(['question_normalized', 'hits']);
+            ->get();
 
         return response()->json($results);
+    }
+
+    public function questionsTimeseries()
+    {
+        $tenant = TenantContext::getTenant();
+
+        $results = $this->questionEventsQuery($tenant->id)
+            ->select(DB::raw("DATE(created_at) as date"), DB::raw('count(*) as count'))
+            ->groupBy(DB::raw('DATE(created_at)'))
+            ->orderBy(DB::raw('DATE(created_at)'))
+            ->get();
+
+        return response()->json($results);
+    }
+
+    private function questionEventsQuery(int $tenantId)
+    {
+        $query = QuestionEvent::query()->where('tenant_id', $tenantId);
+
+        $start = request()->query('start_date');
+        $end = request()->query('end_date');
+
+        if ($start) {
+            $query->where('created_at', '>=', Carbon::parse($start)->startOfDay());
+        }
+        if ($end) {
+            $query->where('created_at', '<=', Carbon::parse($end)->endOfDay());
+        }
+
+        return $query;
     }
 }

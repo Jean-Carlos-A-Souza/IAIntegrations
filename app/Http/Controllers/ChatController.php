@@ -8,6 +8,7 @@ use App\Models\AiSetting;
 use App\Models\Chat;
 use App\Models\ChatMessage;
 use App\Models\FaqCache;
+use App\Models\QuestionEvent;
 use App\Services\OpenAIService;
 use App\Services\RAGService;
 use App\Services\TenantContext;
@@ -30,6 +31,14 @@ class ChatController extends Controller
 
         $quickReply = $this->quickReply($normalized);
         if ($quickReply !== null) {
+            QuestionEvent::query()->create([
+                'tenant_id' => $tenant->id,
+                'user_id' => $request->user()?->id,
+                'question_normalized' => $normalized,
+                'question_text' => $question,
+                'source' => 'ask',
+            ]);
+
             $existing = FaqCache::query()
                 ->where('tenant_id', $tenant->id)
                 ->where('question_normalized', $normalized)
@@ -63,6 +72,14 @@ class ChatController extends Controller
             ->where('question_normalized', $normalized)
             ->first();
         if ($cached) {
+            QuestionEvent::query()->create([
+                'tenant_id' => $tenant->id,
+                'user_id' => $request->user()?->id,
+                'question_normalized' => $normalized,
+                'question_text' => $question,
+                'source' => 'ask',
+            ]);
+
             $cached->increment('hits');
             $this->tokens->recordUsage(0);
 
@@ -74,6 +91,14 @@ class ChatController extends Controller
         }
 
         if (!$this->rag->hasDocumentsForTenant($tenant->id)) {
+            QuestionEvent::query()->create([
+                'tenant_id' => $tenant->id,
+                'user_id' => $request->user()?->id,
+                'question_normalized' => $normalized,
+                'question_text' => $question,
+                'source' => 'ask',
+            ]);
+
             $answer = 'Nao encontrei base de conhecimento suficiente para responder a sua pergunta.';
             $usageTokens = $this->tokens->estimateTokens($answer);
 
@@ -101,6 +126,14 @@ class ChatController extends Controller
         $contextChunks = $this->rag->searchSimilar($embedding, $tenant->id);
 
         if (empty($contextChunks)) {
+            QuestionEvent::query()->create([
+                'tenant_id' => $tenant->id,
+                'user_id' => $request->user()?->id,
+                'question_normalized' => $normalized,
+                'question_text' => $question,
+                'source' => 'ask',
+            ]);
+
             $answer = 'Nao encontrei base de conhecimento suficiente para responder a sua pergunta.';
             $usageTokens = $this->tokens->estimateTokens($answer);
 
@@ -149,6 +182,14 @@ class ChatController extends Controller
             'tokens_saved' => $usageTokens,
         ]);
 
+        QuestionEvent::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $request->user()?->id,
+            'question_normalized' => $normalized,
+            'question_text' => $question,
+            'source' => 'ask',
+        ]);
+
         $this->tokens->recordUsage($usageTokens);
 
         return response()->json([
@@ -162,6 +203,17 @@ class ChatController extends Controller
     public function message(Chat $chat, ChatMessageRequest $request)
     {
         $message = $request->input('message');
+        $normalized = $this->rag->normalizeQuestion($message);
+        $tenant = TenantContext::getTenant();
+
+        QuestionEvent::query()->create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $request->user()?->id,
+            'question_normalized' => $normalized,
+            'question_text' => $message,
+            'source' => 'message',
+        ]);
+
         $chat->messages()->create([
             'role' => 'user',
             'content' => $message,
